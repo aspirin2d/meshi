@@ -1,9 +1,9 @@
-import { Hono } from 'hono'
+import { Hono } from "hono";
 
-const app = new Hono()
+const app = new Hono<{ Bindings: CloudflareBindings }>();
 
-app.get('/', (c) => {
-  return c.text('Hello, World!')
-})
+app.get("/", (c) => {
+	return c.text(`hello, ${c.env.TEST}.`);
+});
 
-export default app
+export default app;

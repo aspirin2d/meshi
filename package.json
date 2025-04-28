@@ -9,6 +9,7 @@
     "hono": "^4.7.7"
   },
   "devDependencies": {
+    "@types/node": "^22.15.2",
     "wrangler": "^4.4.0"
   }
 }
