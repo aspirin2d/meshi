@@ -6,4 +6,13 @@ compatibility_date = "2025-04-01"
 compatibility_flags = [ "nodejs_compat_v2" ]
 
 [vars]
-TEST = "world"
+WORLD = "world"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "088452da7e984637a95caf564124e0b4"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "meshi"
+database_id = "ded4552d-1033-4f9c-999b-f39610b5c639"
