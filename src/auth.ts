@@ -7,7 +7,10 @@ import { sign, verify } from "hono/jwt";
 import { hashPassword, verifyPassword } from "./utils/password";
 import { createMiddleware } from "hono/factory";
 
-export const auth = new Hono<{ Bindings: CloudflareBindings }>();
+import { PrismaClient } from "@/generated/prisma";
+import { PrismaD1 } from "@prisma/adapter-d1";
+
+export const auth = new Hono<{ Bindings: Env }>();
 
 const passwordSchema = z
 	.string()
@@ -33,11 +36,11 @@ auth.post(
 	}),
 	async (c) => {
 		const { email, password } = c.req.valid("json");
-		// search for existing user
-		const user = await c.env.DB.prepare("SELECT * FROM users WHERE email = ?")
-			.bind(email)
-			.first();
+		const adapter = new PrismaD1(c.env.DB);
+		const prisma = new PrismaClient({ adapter });
 
+		// search for existing user
+		const user = await prisma.user.findUnique({ where: { email: email } });
 		if (user) {
 			return c.json({ message: "User already exists" }, 409);
 		}
@@ -96,22 +99,20 @@ auth.post("/login", async (c) => {
 	return c.json({ accessToken: token }, 200);
 });
 
-export const useAuth = createMiddleware<{ Bindings: CloudflareBindings }>(
-	async (c, next) => {
-		const authHeader = c.req.header("Authorization");
-		if (!authHeader) {
-			return c.json({ message: "Authorization header missing" }, 401);
-		}
+export const useAuth = createMiddleware<{ Bindings: Env }>(async (c, next) => {
+	const authHeader = c.req.header("Authorization");
+	if (!authHeader) {
+		return c.json({ message: "Authorization header missing" }, 401);
+	}
 
-		const token = authHeader.replace("Bearer ", "").trim();
-		try {
-			const payload = await verify(token, c.env.JWT_SECRET);
-			// Attach the payload to the context so handlers can access it
-			c.set("jwtPayload", payload);
-			await next();
-		} catch (error) {
-			console.error("JWT verification failed:", error);
-			return c.json({ message: "Unauthorized: Invalid or expired token" }, 401);
-		}
-	},
-);
+	const token = authHeader.replace("Bearer ", "").trim();
+	try {
+		const payload = await verify(token, c.env.JWT_SECRET);
+		// Attach the payload to the context so handlers can access it
+		c.set("jwtPayload", payload);
+		await next();
+	} catch (error) {
+		console.error("JWT verification failed:", error);
+		return c.json({ message: "Unauthorized: Invalid or expired token" }, 401);
+	}
+});
