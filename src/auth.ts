@@ -1,36 +1,69 @@
 import { Hono } from "hono";
+
+import { z } from "zod";
+import { zValidator as zv } from "@hono/zod-validator";
+
 import { sign, verify } from "hono/jwt";
 import { hashPassword, verifyPassword } from "./utils/password";
 import { createMiddleware } from "hono/factory";
 
 export const auth = new Hono<{ Bindings: CloudflareBindings }>();
 
-auth.post("/signup", async (c) => {
-	const { email, password } = await c.req.json();
-	// search for existing user
-	const user = await c.env.DB.prepare("SELECT * FROM users WHERE email = ?")
-		.bind(email)
-		.first();
+const passwordSchema = z
+	.string()
+	.min(8, "Password must be at least 8 characters long")
+	.max(36, "Password must be at most 100 characters long")
+	.regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+	.regex(/[a-z]/, "Password must contain at least one lowercase letter")
+	.regex(/[0-9]/, "Password must contain at least one number")
+	.regex(/[\W_]/, "Password must contain at least one special character");
 
-	if (user) {
-		return c.json({ message: "User already exists" }, 409);
-	}
-
-	// insert new user
-	const hashed = await hashPassword(password);
-	const result = await c.env.DB.prepare(
-		"INSERT INTO users (email, password) VALUES (?, ?)",
-	)
-		.bind(email, hashed)
-		.run();
-
-	if (result.success) {
-		console.log("User created:", result.meta.last_row_id);
-		return c.json({ message: "User created successfully" }, 201);
-	} else {
-		console.error("Error creating user:", result.error, 500);
-	}
+const signupSchema = z.object({
+	email: z.string().email(),
+	password: passwordSchema,
 });
+
+auth.post(
+	"/signup",
+	zv("json", signupSchema, (result, c) => {
+		if (!result.success) {
+			const formatted = result.error.format();
+			return c.json(formatted, 400);
+		}
+	}),
+	async (c) => {
+		const { email, password } = c.req.valid("json");
+		// search for existing user
+		const user = await c.env.DB.prepare("SELECT * FROM users WHERE email = ?")
+			.bind(email)
+			.first();
+
+		if (user) {
+			return c.json({ message: "User already exists" }, 409);
+		}
+
+		// insert new user
+		const hashed = await hashPassword(password);
+		const result = await c.env.DB.prepare(
+			"INSERT INTO users (email, password) VALUES (?, ?)",
+		)
+			.bind(email, hashed)
+			.run();
+
+		if (result.success) {
+			// console.log("User created:", result.meta.last_row_id);
+			const token = await sign(
+				{ email, exp: Math.floor(Date.now() / 1000) + 3600 }, // 1 hour
+				c.env.JWT_SECRET,
+			);
+
+			return c.json({ accessToken: token }, 201);
+		} else {
+			console.error("Error creating user:", result.error);
+			return c.json({ message: "Error creating user" }, 500);
+		}
+	},
+);
 
 type UserPassword = {
 	password: string;
@@ -60,7 +93,7 @@ auth.post("/login", async (c) => {
 		{ email, exp: Math.floor(Date.now() / 1000) + 3600 }, // 1 hour
 		c.env.JWT_SECRET,
 	);
-	return c.json({ jwt: token }, 200);
+	return c.json({ accessToken: token }, 200);
 });
 
 export const useAuth = createMiddleware<{ Bindings: CloudflareBindings }>(
