@@ -1,8 +1,12 @@
 import { describe, test, expect } from "vitest";
+import { hc } from "hono/client";
+
 import { env } from "cloudflare:test";
 import app from "../src/index";
 
 describe("meshi app test", () => {
+	let token = "";
+
 	test("GET /hello", async () => {
 		const res = await app.request("/hello");
 		const json: any = await res.json();
@@ -25,7 +29,8 @@ describe("meshi app test", () => {
 			},
 			env,
 		);
-
 		expect(res.status).toBe(201);
+		const json: any = await res.json();
+		token = json.accessToken;
 	});
 });
